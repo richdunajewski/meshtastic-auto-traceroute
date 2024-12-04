@@ -1,0 +1,17 @@
+{
+  "name": "auto-tracert",
+  "version": "1.0.0",
+  "description": "Meshtastic automatic traceroute of new nodes",
+  "main": "app.js",
+  "author": "Rich Dunajewski <me@richdunajewski.com>",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "typescript": "^5.7.2"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.13",
+    "@types/node": "^22.10.1"
+  }
+}
