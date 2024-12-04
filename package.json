@@ -6,6 +6,10 @@
   "author": "Rich Dunajewski <me@richdunajewski.com>",
   "license": "MIT",
   "private": true,
+  "scripts": {
+    "build": "npx tsc",
+    "watch": "npx tsc -w"
+  },
   "dependencies": {
     "lodash": "^4.17.21",
     "typescript": "^5.7.2"
