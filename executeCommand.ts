@@ -12,7 +12,6 @@ export async function executeCommand(command: string): Promise<string> {
         }
         return stdout;
     } catch (err: unknown) {
-        console.log(inspect(err));
         if (err instanceof Error) {
             // Handle standard Error
             throw new Error(`Error: ${err.message}`);

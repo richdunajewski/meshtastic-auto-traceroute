@@ -1,4 +1,5 @@
 import { executeCommand } from './executeCommand';
+import config from './config';
 
 interface MyInfo {
     myNodeNum?: number;
@@ -39,7 +40,7 @@ interface NodePosition {
     longitude: number;
 }
 
-interface NodeEntry {
+export interface NodeEntry {
     num: number;
     user: NodeUser;
     position: NodePosition;
@@ -62,6 +63,18 @@ interface NodeInfo {
     metadata: Metadata;
     primaryChannelURL: string;
     nodes: NodeEntry[];
+}
+
+interface RouteHop {
+    from: string;
+    to: string;
+    signalStrength: number;
+}
+
+interface TracerouteResult {
+    outboundRoute: RouteHop[];
+    inboundRoute: RouteHop[];
+    success: boolean;
 }
 
 function errorHandler(err: unknown) {
@@ -88,10 +101,30 @@ export async function checkCLI() {
 
 export async function traceroute(node: string) {
     try {
-        const output = await executeCommand(`meshtastic --traceroute ${node} --timeout 15`);
+        console.log(`Tracerouting to ${node}...`);
+        const output = await executeCommand(`meshtastic --traceroute ${node}`);
+        
+        // Check if output contains timeout error
+        if (output.search(/Timed out waiting for traceroute/i) !== -1) {
+            throw new Error('Traceroute timed out');
+        }
+        
+        // Check if output contains other error messages
+        if (output.search(/Aborting due to:/i) !== -1) {
+            const errorMatch = output.match(/Aborting due to: (.+)/);
+            if (errorMatch) {
+                throw new Error(errorMatch[1].trim());
+            }
+            throw new Error('Unknown traceroute error');
+        }
+
         return output;
     } catch (err: unknown) {
-        errorHandler(err);
+        // Check if the error message contains timeout information
+        if (err instanceof Error && err.message.search(/Timed out waiting for traceroute/i) !== -1) {
+            return `Failed to traceroute to ${node}: Traceroute timed out`;
+        }
+        return `Failed to traceroute to ${node}: ${err instanceof Error ? err.message : 'Unknown error'}`;
     }
 }
 
@@ -106,7 +139,7 @@ export async function getNodeInfo(): Promise<NodeInfo | undefined> {
     }
 }
 
-async function parseNodeInfo(nodeInfo: string): Promise<NodeInfo> {    
+async function parseNodeInfo(nodeInfo: string): Promise<NodeInfo> {
     let owner = '';
     let metadata = {};
     let myInfo = {};
@@ -115,11 +148,11 @@ async function parseNodeInfo(nodeInfo: string): Promise<NodeInfo> {
     let nodesList = [];
     let nowParsing: string | null = null;
 
-    const lines = nodeInfo.split('\r\n');
+    const lines = nodeInfo.split(/\r?\n/);
     for (const line of lines) {
         // console.log(line);
         if (line.trim() === '') {
-            if (nowParsing === 'nodes') {                
+            if (nowParsing === 'nodes') {
                 nodesList = JSON.parse(nodes);
             }
             nowParsing = null;
@@ -148,4 +181,67 @@ async function parseNodeInfo(nodeInfo: string): Promise<NodeInfo> {
         primaryChannelURL,
         nodes: nodesList
     };
+}
+
+export function convertNodeNumToId(nodeNum: number): string {
+    // Convert to hex and remove '0x' prefix, ensure lowercase
+    const hexNum = nodeNum.toString(16).toLowerCase();
+    return `!${hexNum}`;
+}
+
+export function convertIdToNodeNum(id: string): number {
+    // Remove '!' prefix, ensure lowercase
+    const hexNum = id.substring(1).toLowerCase();
+    return parseInt(hexNum, 16);
+}
+
+export function parseTraceroute(output: string): TracerouteResult {
+    const result: TracerouteResult = {
+        outboundRoute: [],
+        inboundRoute: [],
+        success: false
+    };
+
+    // Skip if error message
+    if (output.startsWith('Failed to traceroute')) {
+        return result;
+    }
+
+    const lines = output.split('\n');
+    let isOutbound = true;
+
+    for (const line of lines) {
+        if (line.includes('Route traced back to us:')) {
+            isOutbound = false;
+            continue;
+        }
+        
+        // Look for lines containing --> and dB
+        if (line.includes('-->')) {
+            const hops = line.split('-->').map(h => h.trim());
+            
+            // Process each hop pair in the line
+            for (let i = 0; i < hops.length - 1; i++) {
+                const fromNode = hops[i].split(' ')[0];  // Get node ID before any dB value
+                const toMatch = hops[i + 1].match(/(![\w]+)\s+\(([-\d.]+)dB\)/);
+                
+                if (toMatch) {
+                    const hop: RouteHop = {
+                        from: fromNode,
+                        to: toMatch[1],
+                        signalStrength: parseFloat(toMatch[2])
+                    };
+                    
+                    if (isOutbound) {
+                        result.outboundRoute.push(hop);
+                    } else {
+                        result.inboundRoute.push(hop);
+                    }
+                }
+            }
+        }
+    }
+
+    result.success = result.outboundRoute.length > 0 || result.inboundRoute.length > 0;
+    return result;
 }
