@@ -150,7 +150,6 @@ async function parseNodeInfo(nodeInfo: string): Promise<NodeInfo> {
 
     const lines = nodeInfo.split(/\r?\n/);
     for (const line of lines) {
-        // console.log(line);
         if (line.trim() === '') {
             if (nowParsing === 'nodes') {
                 nodesList = JSON.parse(nodes);
